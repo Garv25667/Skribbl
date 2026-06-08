@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <input id="msg" placeholder="Type a message" />
+  <button onclick="send()">Send</button>
+  <div id="log"></div>
+
+  <script>
+    const ws = new WebSocket("ws://localhost:3223/?room=testroom")
+
+    ws.onopen = () => log("Connected!")
+    ws.onmessage = (e) => log("Received: " + e.data)
+    ws.onclose = () => log("Disconnected")
+
+    function send() {
+      const data = document.getElementById("msg").value
+      ws.send(JSON.stringify({ MsgType: "broadcast", Data: data }))
+    }
+
+    function log(msg) {
+      document.getElementById("log").innerHTML += "<p>" + msg + "</p>"
+    }
+  </script>
+</body>
+</html>
