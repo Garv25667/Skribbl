@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -155,6 +157,10 @@ func (s *Server) joinRoom(c *Client) {
 
 	room.clients[c.ID] = c
 	room.players = append(room.players, c)
+	pljoinPay := PlayerJoinedPayload{
+		PlayerID: c.ID,
+	}
+	s.broadcastToRoom(room, EventPlayerJoined, pljoinPay)
 	fmt.Printf("Client Added Successfully ClientId = %s\n", c.ID)
 }
 
@@ -164,6 +170,10 @@ func (s *Server) leaveRoom(c *Client) {
 		return
 	}
 	delete(room.clients, c.ID)
+	leftpay := PlayerLeftPayload{
+		PlayerID: c.ID,
+	}
+	s.broadcastExcept(room, c.ID, EventPlayerLeft, leftpay)
 	fmt.Printf("Client ID = %s successfully deleted", c.ID)
 }
 
@@ -187,6 +197,22 @@ func (s *Server) startTurn(room *Room) {
 	room.correctGuesses = map[string]bool{}
 	room.currentDrawer = room.players[room.currentDrawerIndex]
 	timer := time.NewTimer(80 * time.Second)
+
+	gspay := GameStartedPayload{
+		DrawerID:  room.currentDrawer.ID,
+		Round:     room.round,
+		MaxRounds: room.maxRounds,
+	}
+	ytpay := YourTurnPayload{
+		Word: room.word,
+	}
+	whpay := WordHintPayload{
+		Hint: MaskString(room.word),
+	}
+	s.sendToClient(room.currentDrawer, EventYourTurn, ytpay)
+	s.broadcastExcept(room, room.currentDrawer.ID, EventWordHint, whpay)
+	s.broadcastToRoom(room, EventGameStarted, gspay)
+
 	go func() {
 		<-timer.C
 		s.nextTurn(room)
@@ -196,11 +222,22 @@ func (s *Server) startTurn(room *Room) {
 func (s *Server) nextTurn(room *Room) {
 	room.timer.Stop()
 	room.currentDrawerIndex += 1
+	correctGuesses := []string{}
+
+	for key := range room.correctGuesses {
+		correctGuesses = append(correctGuesses, key)
+	}
+	tepay := TurnEndedPayload{
+		Word:            room.word,
+		CorrectGuessers: correctGuesses,
+	}
+	s.broadcastToRoom(room, EventTurnEnded, tepay)
+
 	if room.currentDrawerIndex >= len(room.players) {
 		room.round += 1
 		room.currentDrawerIndex = 0
-
 		if room.round > room.maxRounds {
+
 			s.endGame(room)
 			return
 		}
@@ -211,6 +248,10 @@ func (s *Server) nextTurn(room *Room) {
 }
 func (s *Server) endGame(room *Room) {
 	room.state = "Finished"
+	evendedpay := GameEndedPayload{
+		RoomId: room.ID,
+	}
+	s.broadcastToRoom(room, EventGameEnded, evendedpay)
 	delete(s.rooms, room.ID)
 }
 
@@ -227,6 +268,10 @@ func (s *Server) guessHandler(msg *ReqMsg) {
 	}
 	if room.word == msg.Data {
 		room.correctGuesses[msg.Client.ID] = true
+		cgpay := CorrectGuessPayload{
+			PlayerID: msg.Client.ID,
+		}
+		s.broadcastToRoom(room, EventCorrectGuess, cgpay)
 
 		if len(room.correctGuesses) == len(room.players)-1 {
 			s.nextTurn(room)
@@ -234,4 +279,46 @@ func (s *Server) guessHandler(msg *ReqMsg) {
 
 	}
 
+}
+
+func (s *Server) sendToClient(c *Client, msg MsgType, payload interface{}) {
+	data, _ := json.Marshal(payload)
+	resp := RespMsg{
+		MsgType: msg,
+		RoomID:  c.RoomID,
+		Data:    data,
+	}
+	c.conn.WriteJSON(resp)
+}
+
+func (s *Server) broadcastToRoom(room *Room, msg MsgType, payload interface{}) {
+	data, _ := json.Marshal(payload)
+	resp := RespMsg{
+		MsgType: msg,
+		RoomID:  room.ID,
+		Data:    data,
+	}
+	for _, c := range room.clients {
+		c.conn.WriteJSON(resp)
+	}
+
+}
+
+func (s *Server) broadcastExcept(room *Room, excludeID string, msgType MsgType, payload interface{}) {
+	data, _ := json.Marshal(payload)
+	resp := RespMsg{MsgType: msgType, RoomID: room.ID, Data: data}
+	for _, c := range room.clients {
+		if c.ID != excludeID {
+			c.conn.WriteJSON(resp)
+		}
+	}
+}
+
+func MaskString(word string) string {
+	n := len(word)
+	var s strings.Builder
+	for range n {
+		s.WriteString("_")
+	}
+	return s.String()
 }

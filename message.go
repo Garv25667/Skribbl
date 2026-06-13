@@ -1,5 +1,7 @@
 package main
 
+import "encoding/json"
+
 type MsgType string
 
 const (
@@ -14,17 +16,16 @@ type ReqMsg struct {
 	Data    string
 }
 type RespMsg struct {
-	MsgType  MsgType
-	ClientID string
-	RoomID   string
-	Data     string
+	MsgType MsgType
+	RoomID  string
+	Data    json.RawMessage
 }
 
 func newRespMsg(msg *ReqMsg) *RespMsg {
+	data, _ := json.Marshal(msg.Data)
 	return &RespMsg{
-		MsgType:  msg.MsgType,
-		ClientID: msg.Client.ID,
-		RoomID:   msg.Client.RoomID,
-		Data:     msg.Data,
+		MsgType: msg.MsgType,
+		RoomID:  msg.Client.RoomID,
+		Data:    data,
 	}
 }

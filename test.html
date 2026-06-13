@@ -1,20 +1,25 @@
 <!DOCTYPE html>
 <html>
 <body>
-  <input id="msg" placeholder="Type a message" />
-  <button onclick="send()">Send</button>
+  <input id="msg" placeholder="Type a guess" />
+  <button onclick="sendGuess()">Guess</button>
+  <button onclick="startGame()">Start Game</button>
   <div id="log"></div>
 
   <script>
     const ws = new WebSocket("ws://localhost:3223/?room=testroom")
 
-    ws.onopen = () => log("Connected!")
+    ws.onopen = () => log("Connected! My ID will show in events.")
     ws.onmessage = (e) => log("Received: " + e.data)
     ws.onclose = () => log("Disconnected")
 
-    function send() {
+    function sendGuess() {
       const data = document.getElementById("msg").value
-      ws.send(JSON.stringify({ MsgType: "broadcast", Data: data }))
+      ws.send(JSON.stringify({ MsgType: "Guess", Data: data }))
+    }
+
+    function startGame() {
+      ws.send(JSON.stringify({ MsgType: "StartGame", Data: "" }))
     }
 
     function log(msg) {
