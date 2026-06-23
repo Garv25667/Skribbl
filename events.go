@@ -34,6 +34,7 @@ type TurnEndedPayload struct {
 }
 type GameEndedPayload struct {
 	RoomId string
+	Scores map[string]int
 }
 
 type PlayerJoinedPayload struct {

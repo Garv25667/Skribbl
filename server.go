@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Garv25567/Skribbl/internal/database"
 	"github.com/gorilla/websocket"
 )
 
@@ -64,19 +64,23 @@ type Server struct {
 	joinRoomCH  chan *Client
 	leaveRoomCH chan *Client
 	broadcastCH chan *ReqMsg
-	startGameCH chan *Room
+	startGameCH chan string
 	guessCH     chan *ReqMsg
+	nextTurnCH  chan string
+	DB          *database.Queries
 }
 
-func newServer() *Server {
+func newServer(db *database.Queries) *Server {
 	return &Server{
 		rooms:       map[string]*Room{},
 		mu:          new(sync.RWMutex),
-		joinRoomCH:  make(chan *Client, 64),
-		leaveRoomCH: make(chan *Client, 64),
-		broadcastCH: make(chan *ReqMsg, 64),
-		startGameCH: make(chan *Room, 64),
-		guessCH:     make(chan *ReqMsg, 64),
+		joinRoomCH:  make(chan *Client, 256),
+		leaveRoomCH: make(chan *Client, 256),
+		broadcastCH: make(chan *ReqMsg, 256),
+		startGameCH: make(chan string, 256),
+		nextTurnCH:  make(chan string, 256),
+		guessCH:     make(chan *ReqMsg, 256),
+		DB:          db,
 	}
 }
 
@@ -89,16 +93,29 @@ func (s *Server) AcceptLoop() {
 			s.leaveRoom(c)
 		case msg := <-s.broadcastCH:
 			s.broadcast(msg)
-		case room := <-s.startGameCH:
-			s.startGame(room)
+		case roomID := <-s.startGameCH:
+			s.startGame(s.rooms[roomID])
 		case msg := <-s.guessCH:
 			s.guessHandler(msg)
+		case roomID := <-s.nextTurnCH:
+			room := s.rooms[roomID]
+			if room == nil {
+				continue
+			}
+			s.nextTurn(room)
 
 		}
 	}
 }
 
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	tokenStr := r.URL.Query().Get("token")
+	playerID, err := verifyJWT(tokenStr)
+	if err != nil {
+		http.Error(w, "unathorized", 401)
+		return
+	}
+
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  512,
 		WriteBufferSize: 512,
@@ -111,7 +128,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Error Upgrading the connection Error = %s\n", err)
 		return
 	}
-	client := newClient(conn)
+	client := newClient(conn, playerID)
 	roomID := r.URL.Query().Get("room")
 	client.RoomID = roomID
 	s.joinRoomCH <- client
@@ -135,7 +152,7 @@ func (s *Server) broadcast(msg *ReqMsg) {
 	room.mu.RUnlock()
 	resp := newRespMsg(msg)
 	for _, c := range cls {
-		err := c.conn.WriteJSON(resp)
+		err := c.writeJSON(resp)
 		if err != nil {
 			fmt.Printf("Error sending msg to ClientID = %s\n", c.ID)
 			continue
@@ -150,12 +167,15 @@ func (s *Server) joinRoom(c *Client) {
 		room = newRoom(c.RoomID)
 		s.rooms[c.RoomID] = room
 	}
-	if len(room.clients) > room.maxClients {
+	if len(room.clients) >= room.maxClients {
 		fmt.Println("The room is Full")
 		return
 	}
 
 	room.clients[c.ID] = c
+	if len(room.players) == 0 {
+		c.isHost = true
+	}
 	room.players = append(room.players, c)
 	pljoinPay := PlayerJoinedPayload{
 		PlayerID: c.ID,
@@ -169,7 +189,22 @@ func (s *Server) leaveRoom(c *Client) {
 	if room == nil {
 		return
 	}
+
 	delete(room.clients, c.ID)
+	if len(room.clients) == 0 {
+		s.endGame(room)
+		return
+	}
+	for i, player := range room.players {
+		if player.ID == c.ID {
+			room.players = append(room.players[:i], room.players[i+1:]...)
+			break
+		}
+	}
+	if c.isHost == true {
+		room.players[0].isHost = true
+	}
+
 	leftpay := PlayerLeftPayload{
 		PlayerID: c.ID,
 	}
@@ -177,15 +212,22 @@ func (s *Server) leaveRoom(c *Client) {
 	fmt.Printf("Client ID = %s successfully deleted", c.ID)
 }
 
-func createNewWSServer() {
-	s := newServer()
+func createNewWSServer(db *database.Queries) {
+	s := newServer(db)
 	go s.AcceptLoop()
 	http.HandleFunc("/", s.handleWS)
+	http.HandleFunc("/register", s.handleRegister)
 	log.Fatal(http.ListenAndServe(WSPort, nil))
 }
 
-// Put this in a separate words.go file. Then use wordList[rand.IntN(len(wordList))] to pick one.
 func (s *Server) startGame(room *Room) {
+	if room == nil { // ADD THIS
+		return
+	}
+	if room.state != "Waiting" {
+		return
+	}
+	room.scores = map[string]int{}
 	room.state = "playing"
 	room.currentDrawerIndex = 0
 	room.round = 1
@@ -193,9 +235,15 @@ func (s *Server) startGame(room *Room) {
 
 }
 func (s *Server) startTurn(room *Room) {
-	room.word = wordList[rand.Intn(len(wordList))]
+	if room == nil {
+		return
+	}
+	room.turnEnded = false
+
+	room.word = "banana" //wordList[rand.Intn(len(wordList))]
 	room.correctGuesses = map[string]bool{}
 	room.currentDrawer = room.players[room.currentDrawerIndex]
+	room.turnStartTime = time.Now()
 	timer := time.NewTimer(80 * time.Second)
 
 	gspay := GameStartedPayload{
@@ -215,11 +263,18 @@ func (s *Server) startTurn(room *Room) {
 
 	go func() {
 		<-timer.C
-		s.nextTurn(room)
+		s.nextTurnCH <- room.ID
 	}()
 	room.timer = timer
 }
 func (s *Server) nextTurn(room *Room) {
+	if room == nil || room.state == "Finished" {
+		return
+	}
+	if room.turnEnded {
+		return
+	}
+	room.turnEnded = true
 	room.timer.Stop()
 	room.currentDrawerIndex += 1
 	correctGuesses := []string{}
@@ -236,7 +291,7 @@ func (s *Server) nextTurn(room *Room) {
 	if room.currentDrawerIndex >= len(room.players) {
 		room.round += 1
 		room.currentDrawerIndex = 0
-		if room.round > room.maxRounds {
+		if room.round >= room.maxRounds {
 
 			s.endGame(room)
 			return
@@ -247,17 +302,27 @@ func (s *Server) nextTurn(room *Room) {
 
 }
 func (s *Server) endGame(room *Room) {
+	if room.state == "Finished" {
+		return
+	}
+	fmt.Println("END GAME CALLED\n now broadcasting ", room.ID)
 	room.state = "Finished"
 	evendedpay := GameEndedPayload{
 		RoomId: room.ID,
+		Scores: room.scores,
 	}
 	s.broadcastToRoom(room, EventGameEnded, evendedpay)
 	delete(s.rooms, room.ID)
+	room.players = nil
 }
 
 func (s *Server) guessHandler(msg *ReqMsg) {
 
 	room := s.rooms[msg.Client.RoomID]
+
+	if room == nil {
+		return
+	}
 	if room.currentDrawer == msg.Client {
 		fmt.Println("The Drawer Can't guess")
 		return
@@ -266,15 +331,29 @@ func (s *Server) guessHandler(msg *ReqMsg) {
 		fmt.Println("Already guessed Correctly")
 		return
 	}
-	if room.word == msg.Data {
+	guess := strings.TrimSpace(strings.ToLower(msg.Data))
+	word := strings.TrimSpace(strings.ToLower(room.word))
+	if guess == word {
 		room.correctGuesses[msg.Client.ID] = true
+		elapsed := time.Since(room.turnStartTime).Seconds()
+		timeLimit := 80.0
+
+		timeRemaining := timeLimit - elapsed
+		if timeRemaining < 0 {
+			timeRemaining = 0
+		}
+
+		bonus := (int)((timeRemaining / timeLimit) * 700)
+		room.scores[msg.Client.ID] += 100 + bonus
+		room.scores[room.currentDrawer.ID] += 50
+
 		cgpay := CorrectGuessPayload{
 			PlayerID: msg.Client.ID,
 		}
 		s.broadcastToRoom(room, EventCorrectGuess, cgpay)
 
 		if len(room.correctGuesses) == len(room.players)-1 {
-			s.nextTurn(room)
+			s.nextTurnCH <- room.ID
 		}
 
 	}
@@ -288,7 +367,7 @@ func (s *Server) sendToClient(c *Client, msg MsgType, payload interface{}) {
 		RoomID:  c.RoomID,
 		Data:    data,
 	}
-	c.conn.WriteJSON(resp)
+	c.writeJSON(resp)
 }
 
 func (s *Server) broadcastToRoom(room *Room, msg MsgType, payload interface{}) {
@@ -299,7 +378,7 @@ func (s *Server) broadcastToRoom(room *Room, msg MsgType, payload interface{}) {
 		Data:    data,
 	}
 	for _, c := range room.clients {
-		c.conn.WriteJSON(resp)
+		c.writeJSON(resp)
 	}
 
 }
@@ -309,16 +388,19 @@ func (s *Server) broadcastExcept(room *Room, excludeID string, msgType MsgType, 
 	resp := RespMsg{MsgType: msgType, RoomID: room.ID, Data: data}
 	for _, c := range room.clients {
 		if c.ID != excludeID {
-			c.conn.WriteJSON(resp)
+			c.writeJSON(resp)
 		}
 	}
 }
 
 func MaskString(word string) string {
-	n := len(word)
 	var s strings.Builder
-	for range n {
-		s.WriteString("_")
+	for _, ch := range word {
+		if ch == ' ' {
+			s.WriteString("  ") // double space to visually separate words
+		} else {
+			s.WriteString("_ ")
+		}
 	}
-	return s.String()
+	return strings.TrimSpace(s.String())
 }

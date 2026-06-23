@@ -1,5 +1,15 @@
 package main
 
+import (
+	"database/sql"
+	"log"
+	"os"
+
+	"github.com/Garv25567/Skribbl/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+)
+
 // to do
 // [x] Create a server
 // [x]connection upgrade
@@ -8,5 +18,15 @@ package main
 // [x] go channel run to accept loop
 
 func main() {
-	createNewWSServer()
+	godotenv.Load()
+
+	dbURL := os.Getenv("DB_URL")
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	dbQueries := database.New(db)
+
+	createNewWSServer(dbQueries)
 }

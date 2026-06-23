@@ -10,20 +10,30 @@ import (
 )
 
 type Client struct {
-	ID     string
-	RoomID string
-	mu     *sync.RWMutex
-	conn   *websocket.Conn
+	ID       string
+	PlayerID int32
+	RoomID   string
+	mu       *sync.RWMutex
+	conn     *websocket.Conn
+	isHost   bool
 }
 
-func newClient(conn *websocket.Conn) *Client {
+func newClient(conn *websocket.Conn, playerID int32) *Client {
 	id := rand.Text()[:9]
 	return &Client{
-		ID:     id,
-		RoomID: "",
-		mu:     new(sync.RWMutex),
-		conn:   conn,
+		ID:       id,
+		PlayerID: playerID,
+		RoomID:   "",
+		mu:       new(sync.RWMutex),
+		conn:     conn,
+		isHost:   false,
 	}
+}
+
+func (c *Client) writeJSON(v interface{}) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn.WriteJSON(v)
 }
 
 func (c *Client) readMsgLoop(srv *Server) {
@@ -47,7 +57,8 @@ func (c *Client) readMsgLoop(srv *Server) {
 		case MsgType_Broadcast:
 			srv.broadcastCH <- msg
 		case MsgType_Start:
-			srv.startGameCH <- srv.rooms[c.RoomID]
+			srv.startGameCH <- c.RoomID
+
 		case MsgType_Guess:
 			srv.guessCH <- msg
 

@@ -10,6 +10,8 @@ type Room struct {
 	clients    map[string]*Client
 	mu         *sync.RWMutex
 	maxClients int
+	scores     map[string]int
+	turnEnded  bool
 	GameState
 }
 type GameState struct {
@@ -22,6 +24,7 @@ type GameState struct {
 	round              int
 	maxRounds          int
 	timer              *time.Timer
+	turnStartTime      time.Time
 }
 
 func newRoom(id string) *Room {
@@ -30,9 +33,12 @@ func newRoom(id string) *Room {
 		clients:    map[string]*Client{},
 		mu:         new(sync.RWMutex),
 		maxClients: 8,
+		scores:     map[string]int{},
+
 		GameState: GameState{
-			state:     "Waiting",
-			maxRounds: 3,
+			state:          "Waiting",
+			maxRounds:      3,
+			correctGuesses: make(map[string]bool),
 		},
 	}
 }

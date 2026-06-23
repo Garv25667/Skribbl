@@ -8,6 +8,7 @@ const (
 	MsgType_Broadcast MsgType = "broadcast"
 	MsgType_Start     MsgType = "StartGame"
 	MsgType_Guess     MsgType = "Guess"
+	MsgType_nextTurn  MsgType = "nextturn"
 )
 
 type ReqMsg struct {
