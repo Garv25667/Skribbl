@@ -16,6 +16,12 @@ type Client struct {
 	mu       *sync.RWMutex
 	conn     *websocket.Conn
 	isHost   bool
+	Username string
+}
+type PlayerInfo struct {
+	PlayerID string
+	Username string
+	IsHost   bool
 }
 
 func newClient(conn *websocket.Conn, playerID int32) *Client {

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -176,11 +178,27 @@ func (s *Server) joinRoom(c *Client) {
 	if len(room.players) == 0 {
 		c.isHost = true
 	}
+	player, err := s.DB.GetPlayerByID(context.Background(), c.PlayerID)
+	if err != nil {
+		fmt.Printf("Couldnt Find player %s", err)
+	}
+	c.Username = player.Username
+
 	room.players = append(room.players, c)
 	pljoinPay := PlayerJoinedPayload{
 		PlayerID: c.ID,
+		Username: player.Username,
 	}
-	s.broadcastToRoom(room, EventPlayerJoined, pljoinPay)
+	currentPlayers := []PlayerInfo{}
+	for _, p := range room.players {
+		currentPlayers = append(currentPlayers, PlayerInfo{
+			PlayerID: p.ID,
+			Username: p.Username,
+			IsHost:   p.isHost,
+		})
+	}
+	s.sendToClient(c, EventRoomInfo, RoomInfoPayload{CurrentPlayers: currentPlayers})
+	s.broadcastExcept(room, c.ID, EventPlayerJoined, pljoinPay)
 	fmt.Printf("Client Added Successfully ClientId = %s\n", c.ID)
 }
 
@@ -221,7 +239,7 @@ func createNewWSServer(db *database.Queries) {
 }
 
 func (s *Server) startGame(room *Room) {
-	if room == nil { // ADD THIS
+	if room == nil {
 		return
 	}
 	if room.state != "Waiting" {
@@ -240,7 +258,7 @@ func (s *Server) startTurn(room *Room) {
 	}
 	room.turnEnded = false
 
-	room.word = "banana" //wordList[rand.Intn(len(wordList))]
+	room.word = wordList[rand.Intn(len(wordList))]
 	room.correctGuesses = map[string]bool{}
 	room.currentDrawer = room.players[room.currentDrawerIndex]
 	room.turnStartTime = time.Now()

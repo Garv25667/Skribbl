@@ -12,8 +12,6 @@ import (
 
 var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
 
-// --------- ISSUE JWT ---------
-
 func issueJWT(playerID int32) (string, error) {
 	claims := jwt.MapClaims{
 		"player_id": playerID,
@@ -26,8 +24,6 @@ func issueJWT(playerID int32) (string, error) {
 	}
 	return signed, nil
 }
-
-// --------- VERIFY JWT ---------
 
 func verifyJWT(tokenStr string) (int32, error) {
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
@@ -49,9 +45,8 @@ func verifyJWT(tokenStr string) (int32, error) {
 	return playerID, nil
 }
 
-// --------- REGISTER HANDLER ---------
-
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	username := r.URL.Query().Get("username")
 	if username == "" {
 		http.Error(w, "username is required", 400)

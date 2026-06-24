@@ -9,6 +9,7 @@ const (
 	EventGameEnded    MsgType = "game_ended"
 	EventPlayerJoined MsgType = "player_joined"
 	EventPlayerLeft   MsgType = "player_left"
+	EventRoomInfo     MsgType = "room_info"
 )
 
 type GameStartedPayload struct {
@@ -39,8 +40,13 @@ type GameEndedPayload struct {
 
 type PlayerJoinedPayload struct {
 	PlayerID string
+	Username string
 }
 
 type PlayerLeftPayload struct {
 	PlayerID string
+}
+
+type RoomInfoPayload struct {
+	CurrentPlayers []PlayerInfo
 }

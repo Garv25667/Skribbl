@@ -22,6 +22,18 @@ func (q *Queries) CreatePlayer(ctx context.Context, username string) (Player, er
 	return i, err
 }
 
+const getPlayerByID = `-- name: GetPlayerByID :one
+SELECT id, username FROM players
+WHERE id = $1
+`
+
+func (q *Queries) GetPlayerByID(ctx context.Context, id int32) (Player, error) {
+	row := q.db.QueryRowContext(ctx, getPlayerByID, id)
+	var i Player
+	err := row.Scan(&i.ID, &i.Username)
+	return i, err
+}
+
 const getPlayerByUsername = `-- name: GetPlayerByUsername :one
 SELECT id, username FROM players 
 WHERE username = $1

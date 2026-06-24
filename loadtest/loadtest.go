@@ -15,7 +15,7 @@ import (
 const (
 	serverURL  = "http://localhost:3223"
 	wsURL      = "ws://localhost:3223"
-	numRooms   = 10
+	numRooms   = 1000
 	numPlayers = 8
 )
 
@@ -144,13 +144,12 @@ func runRoom(roomIndex int, wg *sync.WaitGroup, results chan<- RoomResult) {
 					case "word_hint":
 						// new turn started, reset guess flag and send one guess
 						hasGuessed = false
-						if !isHost {
-							time.Sleep(time.Duration(playerIndex*50) * time.Millisecond)
-							if !hasGuessed {
-								hasGuessed = true
-								if err := conn.WriteJSON(ReqMsg{MsgType: "Guess", Data: "banana"}); err != nil {
-									fmt.Printf("  ❌ [Room %02d] Player %d guess failed: %v\n", roomIndex, playerIndex, err)
-								}
+
+						time.Sleep(time.Duration(playerIndex*50) * time.Millisecond)
+						if !hasGuessed {
+							hasGuessed = true
+							if err := conn.WriteJSON(ReqMsg{MsgType: "Guess", Data: "banana"}); err != nil {
+								fmt.Printf("  ❌ [Room %02d] Player %d guess failed: %v\n", roomIndex, playerIndex, err)
 							}
 						}
 

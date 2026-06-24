@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skribbl — Draw & Guess</title>
+    <meta name="description" content="Real-time multiplayer drawing and guessing game">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Login Screen -->
+    <div id="screen-login" class="screen active">
+        <div class="card">
+            <h1>🎨 Skribbl</h1>
+            <p class="subtitle">Draw, Guess, Win!</p>
+            <input type="text" id="input-username" placeholder="Enter your name" maxlength="20" autocomplete="off">
+            <button id="btn-login">Play</button>
+            <p id="login-error" class="error"></p>
+        </div>
+    </div>
+
+    <!-- Lobby Screen -->
+    <div id="screen-lobby" class="screen">
+        <div class="card">
+            <h1>🏠 Lobby</h1>
+            <p class="subtitle">Welcome, <span id="display-username"></span>!</p>
+            <input type="text" id="input-room" placeholder="Enter room code" maxlength="20" autocomplete="off">
+            <button id="btn-join">Join Room</button>
+            <button id="btn-create" class="btn-secondary">Create Room</button>
+            <p id="lobby-error" class="error"></p>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="screen-game" class="screen">
+        <!-- Header Bar -->
+        <div id="game-header">
+            <div id="game-round">Waiting...</div>
+            <div id="game-timer">⏱ --</div>
+            <div id="game-word">Waiting for players</div>
+        </div>
+
+        <!-- Main Game Area -->
+        <div id="game-main">
+            <!-- Player List (Left) -->
+            <div id="panel-players">
+                <h3>Players</h3>
+                <ul id="player-list"></ul>
+                <button id="btn-start">Start Game</button>
+            </div>
+
+            <!-- Canvas (Center) -->
+            <div id="panel-canvas">
+                <canvas id="game-canvas" width="800" height="600"></canvas>
+            </div>
+
+            <!-- Chat (Right) -->
+            <div id="panel-chat">
+                <h3>Chat</h3>
+                <div id="chat-messages"></div>
+                <div id="chat-input-area">
+                    <input type="text" id="input-guess" placeholder="Type your guess..." autocomplete="off">
+                    <button id="btn-guess">↵</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drawing Toolbar (drawer only) -->
+        <div id="game-toolbar">
+            <div id="color-picker"></div>
+            <div id="brush-sizes">
+                <button class="brush-btn active" data-size="3">S</button>
+                <button class="brush-btn" data-size="8">M</button>
+                <button class="brush-btn" data-size="16">L</button>
+            </div>
+            <button id="btn-eraser">🧹 Eraser</button>
+            <button id="btn-clear">🗑 Clear</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

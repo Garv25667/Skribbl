@@ -7,3 +7,6 @@ RETURNING *;
 -- name: GetPlayerByUsername :one
 SELECT * FROM players 
 WHERE username = $1;
+-- name: GetPlayerByID :one
+SELECT * FROM players
+WHERE id = $1;
